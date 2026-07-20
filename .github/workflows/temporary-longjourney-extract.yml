@@ -1,0 +1,164 @@
+name: Temporary Long Journey company extraction
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch and validate Getro companies
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import sys
+          import urllib.error
+          import urllib.request
+          from urllib.parse import urlparse
+
+          endpoint = "https://api.getro.com/api/v2/collections/8279/search/companies"
+          origin = "https://jobs.longjourney.vc"
+          referer = "https://jobs.longjourney.vc/companies"
+          page_size = 100
+          all_companies = []
+          reported_total = None
+          page_sizes = []
+
+          for page in range(20):
+              payload = {
+                  "hitsPerPage": page_size,
+                  "page": page,
+                  "query": "",
+                  "filters": "",
+              }
+              request = urllib.request.Request(
+                  endpoint,
+                  data=json.dumps(payload).encode("utf-8"),
+                  method="POST",
+                  headers={
+                      "accept": "application/json",
+                      "content-type": "application/json",
+                      "origin": origin,
+                      "referer": referer,
+                      "user-agent": "Mozilla/5.0 (compatible; data-validation/1.0)",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=60) as response:
+                      data = json.loads(response.read().decode("utf-8"))
+              except urllib.error.HTTPError as error:
+                  print("HTTP_ERROR", error.code, error.read().decode("utf-8", "replace"))
+                  raise
+
+              results = data.get("results") or {}
+              companies = results.get("companies") or []
+              if reported_total is None:
+                  reported_total = results.get("count")
+              page_sizes.append(len(companies))
+              all_companies.extend(companies)
+              if not companies or (reported_total is not None and len(all_companies) >= reported_total):
+                  break
+
+          def first_value(company, *keys):
+              for key in keys:
+                  value = company.get(key)
+                  if value not in (None, ""):
+                      return value
+              return None
+
+          def normalize_url(value):
+              if value is None:
+                  return ""
+              value = str(value).strip()
+              if not value:
+                  return ""
+              if value.startswith("//"):
+                  return "https:" + value
+              if "://" not in value:
+                  return "https://" + value
+              if value.startswith("http://"):
+                  return "https://" + value[7:]
+              return value
+
+          rows = []
+          for company in all_companies:
+              name = str(first_value(company, "name", "title") or "").strip()
+              website = normalize_url(first_value(company, "domain", "website", "website_url", "url"))
+              object_id = str(first_value(company, "id", "objectID", "object_id", "slug", "name") or "").strip()
+              slug = str(first_value(company, "slug") or "").strip()
+              rows.append({
+                  "name": name,
+                  "website": website,
+                  "id": object_id,
+                  "slug": slug,
+              })
+
+          def duplicate_values(key):
+              seen = set()
+              duplicates = set()
+              for row in rows:
+                  value = row[key].casefold() if isinstance(row[key], str) else row[key]
+                  if value in seen:
+                      duplicates.add(row[key])
+                  seen.add(value)
+              return sorted(duplicates)
+
+          names = [row["name"] for row in rows]
+          websites = [row["website"] for row in rows]
+          ids = [row["id"] for row in rows]
+          validation = {
+              "reported_total": reported_total,
+              "retrieved_total": len(rows),
+              "page_sizes": page_sizes,
+              "missing_names": sum(not value for value in names),
+              "missing_websites": sum(not value for value in websites),
+              "missing_ids": sum(not value for value in ids),
+              "duplicate_names": duplicate_values("name"),
+              "duplicate_websites": duplicate_values("website"),
+              "duplicate_ids": duplicate_values("id"),
+              "unique_names": len({value.casefold() for value in names}),
+              "unique_ids": len(set(ids)),
+              "alphabetical_non_decreasing": names == sorted(names, key=str.casefold),
+          }
+          canonical = json.dumps(rows, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+          validation["sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+          print("VALIDATION_START")
+          print(json.dumps(validation, ensure_ascii=False, sort_keys=True))
+          print("VALIDATION_END")
+          print("DATA_START")
+          for index, row in enumerate(rows, 1):
+              clean_name = row["name"].replace("\t", " ").replace("\n", " ")
+              clean_website = row["website"].replace("\t", " ").replace("\n", " ")
+              clean_id = row["id"].replace("\t", " ").replace("\n", " ")
+              clean_slug = row["slug"].replace("\t", " ").replace("\n", " ")
+              print(f"ROW\t{index}\t{clean_name}\t{clean_website}\t{clean_id}\t{clean_slug}")
+          print("DATA_END")
+
+          with open("longjourney_companies.json", "w", encoding="utf-8") as file:
+              json.dump({"validation": validation, "companies": rows}, file, ensure_ascii=False, indent=2)
+          with open("longjourney_companies.txt", "w", encoding="utf-8") as file:
+              for row in rows:
+                  file.write(f"{row['name']} + {row['website']}\n")
+
+          if reported_total != len(rows):
+              sys.exit("Reported and retrieved totals do not match")
+          if validation["missing_names"] or validation["duplicate_ids"]:
+              sys.exit("Identity validation failed")
+          PY
+
+      - name: Upload extraction artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: longjourney-companies
+          path: |
+            longjourney_companies.json
+            longjourney_companies.txt
+          if-no-files-found: error
