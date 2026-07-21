@@ -1,0 +1,25 @@
+name: Temporary 8VC hiring-company extraction v2
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run evidence-first extraction
+        run: python scripts/temporary_8vc_extraction.py
+      - name: Upload extraction evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 8vc-hiring-companies-v2
+          path: artifact
+          if-no-files-found: warn
+          retention-days: 30
