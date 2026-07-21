@@ -1,4 +1,4 @@
-name: Temporary Basis Set hiring-company extraction
+name: Temporary Basis Set hiring-company extraction v2
 
 on:
   pull_request:
@@ -14,12 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run evidence-first extraction
-        run: python scripts/temporary_basisset_extraction.py
+        run: python scripts/temporary_basisset_extraction_v2.py
       - name: Upload extraction evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: basisset-hiring-companies
+          name: basisset-hiring-companies-v2
           path: artifact
           if-no-files-found: warn
           retention-days: 30
