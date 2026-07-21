@@ -1,0 +1,25 @@
+name: Temporary Basis Set hiring-company extraction
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run evidence-first extraction
+        run: python scripts/temporary_basisset_extraction.py
+      - name: Upload extraction evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: basisset-hiring-companies
+          path: artifact
+          if-no-files-found: warn
+          retention-days: 30
