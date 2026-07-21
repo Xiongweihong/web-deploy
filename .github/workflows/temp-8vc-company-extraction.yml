@@ -1,0 +1,419 @@
+name: Temporary 8VC hiring-company extraction
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Fetch, normalize, and independently validate 8VC hiring companies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          import re
+          import sys
+          import time
+          import urllib.error
+          import urllib.request
+          from collections import Counter, defaultdict
+          from pathlib import Path
+          from urllib.parse import urlparse
+
+          COLLECTION_ID = "1005"
+          ORIGIN = "https://jobs.8vc.com"
+          JOBS_URL = f"https://api.getro.com/api/v2/collections/{COLLECTION_ID}/search/jobs"
+          COMPANIES_URL = f"https://api.getro.com/api/v2/collections/{COLLECTION_ID}/search/companies"
+          OUT = Path("artifact")
+          RAW_JOBS = OUT / "raw" / "jobs"
+          RAW_COMPANIES = OUT / "raw" / "companies"
+          RAW_JOBS.mkdir(parents=True, exist_ok=True)
+          RAW_COMPANIES.mkdir(parents=True, exist_ok=True)
+
+          def sha256(data: bytes) -> str:
+              return hashlib.sha256(data).hexdigest()
+
+          def post_json(url: str, payload: dict, referer: str, attempts: int = 5) -> tuple[dict, bytes, dict]:
+              body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+              request = urllib.request.Request(
+                  url,
+                  data=body,
+                  method="POST",
+                  headers={
+                      "accept": "application/json",
+                      "content-type": "application/json",
+                      "origin": ORIGIN,
+                      "referer": referer,
+                      "user-agent": "Mozilla/5.0 (compatible; 8vc-evidence-crawler/1.0)",
+                  },
+              )
+              last_error = None
+              for attempt in range(1, attempts + 1):
+                  try:
+                      with urllib.request.urlopen(request, timeout=90) as response:
+                          raw = response.read()
+                          meta = {
+                              "status": response.status,
+                              "content_type": response.headers.get("content-type"),
+                              "date": response.headers.get("date"),
+                              "etag": response.headers.get("etag"),
+                              "sha256": sha256(raw),
+                              "request_payload": payload,
+                              "fetched_at_epoch": time.time(),
+                          }
+                          return json.loads(raw), raw, meta
+                  except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
+                      last_error = exc
+                      if isinstance(exc, urllib.error.HTTPError) and exc.code < 500 and exc.code not in (408, 429):
+                          detail = exc.read().decode("utf-8", "replace")
+                          raise RuntimeError(f"HTTP {exc.code}: {detail[:2000]}") from exc
+                      if attempt == attempts:
+                          break
+                      time.sleep(min(20, 2 ** attempt))
+              raise RuntimeError(f"request failed after {attempts} attempts: {last_error}")
+
+          def first(record: dict, *keys: str):
+              for key in keys:
+                  value = record.get(key)
+                  if value not in (None, "", [], {}):
+                      return value
+              return None
+
+          def clean_text(value) -> str:
+              return re.sub(r"\s+", " ", str(value or "")).strip()
+
+          def normalize_name(value) -> str:
+              return clean_text(value).casefold()
+
+          def normalize_url(value) -> str:
+              value = clean_text(value)
+              if not value:
+                  return ""
+              if value.startswith("//"):
+                  value = "https:" + value
+              elif "://" not in value:
+                  value = "https://" + value
+              elif value.startswith("http://"):
+                  value = "https://" + value[7:]
+              parsed = urlparse(value)
+              if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                  return ""
+              return value.rstrip("/")
+
+          def source_key(record: dict) -> str:
+              value = first(record, "id", "objectID", "object_id", "slug")
+              if value not in (None, ""):
+                  return str(value).strip()
+              return "name:" + normalize_name(first(record, "name", "title"))
+
+          def org_from_job(job: dict) -> dict:
+              value = job.get("organization") or job.get("company") or {}
+              return value if isinstance(value, dict) else {"name": value}
+
+          def org_key(org: dict) -> str:
+              value = first(org, "id", "objectID", "object_id", "slug")
+              if value not in (None, ""):
+                  return str(value).strip()
+              return "name:" + normalize_name(first(org, "name", "title"))
+
+          def job_key(job: dict) -> str:
+              value = first(job, "id", "objectID", "object_id", "slug", "url")
+              return str(value or "").strip()
+
+          def fetch_pages(kind: str, url: str, raw_dir: Path, payload_style: str, max_pages: int = 1000):
+              page = 0
+              records = []
+              reported_total = None
+              page_meta = []
+              seen_page_hashes = set()
+              while page < max_pages:
+                  if payload_style == "jobs":
+                      payload = {"hits_per_page": 100, "page": page}
+                      referer = ORIGIN + "/jobs"
+                      record_key = "jobs"
+                  else:
+                      payload = {"hitsPerPage": 100, "page": page, "query": "", "filters": ""}
+                      referer = ORIGIN + "/companies"
+                      record_key = "companies"
+                  data, raw, meta = post_json(url, payload, referer)
+                  page_path = raw_dir / f"page-{page:06d}.json"
+                  meta_path = raw_dir / f"page-{page:06d}.meta.json"
+                  page_path.write_bytes(raw)
+                  results = data.get("results") if isinstance(data, dict) else None
+                  if not isinstance(results, dict):
+                      raise RuntimeError(f"{kind} page {page}: missing results object; top keys={list(data) if isinstance(data, dict) else type(data)}")
+                  batch = results.get(record_key) or []
+                  if not isinstance(batch, list):
+                      raise RuntimeError(f"{kind} page {page}: {record_key} is not a list")
+                  current_total = results.get("count")
+                  if reported_total is None:
+                      reported_total = int(current_total) if current_total is not None else None
+                  elif current_total is not None and int(current_total) != reported_total:
+                      raise RuntimeError(f"{kind} total changed during crawl: {reported_total} -> {current_total}")
+                  page_hash = meta["sha256"]
+                  if batch and page_hash in seen_page_hashes:
+                      raise RuntimeError(f"{kind} repeated non-empty page body at page {page}")
+                  seen_page_hashes.add(page_hash)
+                  meta.update({"page": page, "record_count": len(batch), "reported_total": reported_total})
+                  meta_path.write_text(json.dumps(meta, indent=2, sort_keys=True), encoding="utf-8")
+                  page_meta.append(meta)
+                  records.extend(batch)
+                  print(f"{kind}: page={page} records={len(batch)} accumulated={len(records)} total={reported_total}")
+                  if not batch:
+                      terminal = {"type": "empty_page", "page": page}
+                      break
+                  if reported_total is not None and len(records) >= reported_total:
+                      terminal = {"type": "reported_total_reached", "page": page, "count": len(records)}
+                      break
+                  page += 1
+              else:
+                  raise RuntimeError(f"{kind}: max_pages reached without terminal proof")
+              return records, reported_total, page_meta, terminal
+
+          jobs, jobs_total, jobs_pages, jobs_terminal = fetch_pages(
+              "jobs", JOBS_URL, RAW_JOBS, "jobs"
+          )
+          companies, companies_total, companies_pages, companies_terminal = fetch_pages(
+              "companies", COMPANIES_URL, RAW_COMPANIES, "companies"
+          )
+
+          # Re-check page zero after the crawl to detect an unstable source snapshot.
+          check_jobs, _, _ = post_json(JOBS_URL, {"hits_per_page": 100, "page": 0}, ORIGIN + "/jobs")
+          check_companies, _, _ = post_json(
+              COMPANIES_URL,
+              {"hitsPerPage": 100, "page": 0, "query": "", "filters": ""},
+              ORIGIN + "/companies",
+          )
+          jobs_total_after = int((check_jobs.get("results") or {}).get("count") or 0)
+          companies_total_after = int((check_companies.get("results") or {}).get("count") or 0)
+
+          job_ids = [job_key(job) for job in jobs]
+          empty_job_ids = [i for i, value in enumerate(job_ids) if not value]
+          duplicate_job_ids = sorted([k for k, n in Counter(job_ids).items() if k and n > 1])
+
+          company_by_key = {}
+          company_name_to_keys = defaultdict(list)
+          for company in companies:
+              key = source_key(company)
+              if key in company_by_key:
+                  raise RuntimeError(f"duplicate company source key in directory: {key}")
+              company_by_key[key] = company
+              company_name_to_keys[normalize_name(first(company, "name", "title"))].append(key)
+
+          hiring_orgs = {}
+          org_job_counts = Counter()
+          job_org_unusable = []
+          for job in jobs:
+              org = org_from_job(job)
+              key = org_key(org)
+              name = clean_text(first(org, "name", "title"))
+              if not name or key == "name:":
+                  job_org_unusable.append({"job_id": job_key(job), "organization": org})
+                  continue
+              if key in hiring_orgs and normalize_name(first(hiring_orgs[key], "name", "title")) != normalize_name(name):
+                  raise RuntimeError(f"organization key maps to conflicting names: {key}")
+              hiring_orgs[key] = org
+              org_job_counts[key] += 1
+
+          # Resolve each hiring organization to a company directory record. Prefer stable key,
+          # then exact normalized name. Ambiguous names remain unresolved rather than guessed.
+          resolved = []
+          unresolved = []
+          for org_key_value, org in hiring_orgs.items():
+              org_name = clean_text(first(org, "name", "title"))
+              candidates = []
+              if org_key_value in company_by_key:
+                  candidates = [org_key_value]
+              else:
+                  candidates = company_name_to_keys.get(normalize_name(org_name), [])
+              if len(candidates) != 1:
+                  unresolved.append({
+                      "organization_key": org_key_value,
+                      "name": org_name,
+                      "candidate_directory_keys": candidates,
+                      "job_count": org_job_counts[org_key_value],
+                      "raw_organization": org,
+                  })
+                  continue
+              company_key = candidates[0]
+              company = company_by_key[company_key]
+              domain_value = first(company, "domain", "website", "website_url")
+              website = normalize_url(domain_value)
+              resolved.append({
+                  "source_id": company_key,
+                  "organization_key": org_key_value,
+                  "name": clean_text(first(company, "name", "title") or org_name),
+                  "website": website,
+                  "raw_domain": clean_text(domain_value),
+                  "source_slug": clean_text(first(company, "slug")),
+                  "active_job_count_from_jobs": org_job_counts[org_key_value],
+                  "active_job_count_from_directory": first(company, "active_jobs_count", "jobs_count"),
+                  "website_provenance": "getro_company_domain" if website else "missing",
+              })
+
+          resolved.sort(key=lambda row: (row["name"].casefold(), row["source_id"]))
+          missing_websites = [row for row in resolved if not row["website"]]
+          duplicate_names = {
+              name: items for name, items in (
+                  (name, [row for row in resolved if row["name"].casefold() == name])
+                  for name in sorted(set(row["name"].casefold() for row in resolved))
+              ) if len(items) > 1
+          }
+          website_groups = defaultdict(list)
+          for row in resolved:
+              if row["website"]:
+                  website_groups[urlparse(row["website"]).netloc.casefold().removeprefix("www.")].append(row)
+          duplicate_websites = {host: rows for host, rows in website_groups.items() if len(rows) > 1}
+
+          # Cross-check directory job hints. Some providers may omit this field, so only compare
+          # records where a numeric hint exists.
+          directory_positive = []
+          for key, company in company_by_key.items():
+              hint = first(company, "active_jobs_count", "jobs_count")
+              try:
+                  hint_int = int(hint)
+              except (TypeError, ValueError):
+                  continue
+              if hint_int > 0:
+                  directory_positive.append({"source_id": key, "name": clean_text(first(company, "name", "title")), "count": hint_int})
+          directory_positive_ids = {row["source_id"] for row in directory_positive}
+          resolved_ids = {row["source_id"] for row in resolved}
+
+          # Independent audit: reconstruct directly from saved raw pages without using the in-memory lists.
+          audit_jobs = []
+          for path in sorted(RAW_JOBS.glob("page-*.json")):
+              payload = json.loads(path.read_bytes())
+              audit_jobs.extend(((payload.get("results") or {}).get("jobs") or []))
+          audit_companies = []
+          for path in sorted(RAW_COMPANIES.glob("page-*.json")):
+              payload = json.loads(path.read_bytes())
+              audit_companies.extend(((payload.get("results") or {}).get("companies") or []))
+          audit_job_ids = [job_key(job) for job in audit_jobs]
+          audit_company_ids = [source_key(company) for company in audit_companies]
+          independent_audit = {
+              "raw_job_count": len(audit_jobs),
+              "raw_company_count": len(audit_companies),
+              "unique_job_ids": len(set(audit_job_ids)),
+              "unique_company_ids": len(set(audit_company_ids)),
+              "jobs_match_primary": audit_job_ids == job_ids,
+              "companies_match_primary": audit_company_ids == [source_key(c) for c in companies],
+              "raw_hashes_valid": all(
+                  json.loads(meta.read_text(encoding="utf-8"))["sha256"] == sha256(meta.with_suffix("").read_bytes())
+                  for meta in list(RAW_JOBS.glob("page-*.meta.json")) + list(RAW_COMPANIES.glob("page-*.meta.json"))
+              ),
+          }
+
+          lines = [f'{row["name"]} + {row["website"]}' for row in resolved if row["website"]]
+          (OUT / "8vc-hiring-companies.txt").write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+          (OUT / "8vc-hiring-companies.json").write_text(json.dumps(resolved, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+          (OUT / "unresolved-organizations.json").write_text(json.dumps(unresolved, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+          (OUT / "missing-websites.json").write_text(json.dumps(missing_websites, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+
+          validation = {
+              "collection_id": COLLECTION_ID,
+              "source_jobs_url": ORIGIN + "/jobs",
+              "source_companies_url": ORIGIN + "/companies",
+              "jobs_endpoint": JOBS_URL,
+              "companies_endpoint": COMPANIES_URL,
+              "jobs_reported_total": jobs_total,
+              "jobs_reported_total_after": jobs_total_after,
+              "jobs_raw_count": len(jobs),
+              "jobs_unique_id_count": len(set(job_ids)),
+              "empty_job_ids": empty_job_ids,
+              "duplicate_job_ids": duplicate_job_ids,
+              "jobs_pages": len(jobs_pages),
+              "jobs_page_sizes": [m["record_count"] for m in jobs_pages],
+              "jobs_terminal": jobs_terminal,
+              "companies_reported_total": companies_total,
+              "companies_reported_total_after": companies_total_after,
+              "companies_raw_count": len(companies),
+              "companies_unique_id_count": len(company_by_key),
+              "companies_pages": len(companies_pages),
+              "companies_page_sizes": [m["record_count"] for m in companies_pages],
+              "companies_terminal": companies_terminal,
+              "unique_hiring_organizations_from_jobs": len(hiring_orgs),
+              "resolved_hiring_companies": len(resolved),
+              "output_lines": len(lines),
+              "unresolved_organizations": unresolved,
+              "job_organizations_without_identity": job_org_unusable,
+              "missing_websites": missing_websites,
+              "duplicate_names": duplicate_names,
+              "duplicate_website_hosts": duplicate_websites,
+              "directory_positive_job_company_count": len(directory_positive_ids),
+              "directory_positive_not_in_jobs": sorted(directory_positive_ids - resolved_ids),
+              "jobs_not_directory_positive": sorted(resolved_ids - directory_positive_ids),
+              "independent_audit": independent_audit,
+          }
+
+          hard_errors = []
+          if jobs_total is None or jobs_total != len(jobs): hard_errors.append("jobs total != raw count")
+          if jobs_total_after != jobs_total: hard_errors.append("jobs total changed after crawl")
+          if empty_job_ids: hard_errors.append("empty job ids")
+          if duplicate_job_ids: hard_errors.append("duplicate job ids")
+          if companies_total is None or companies_total != len(companies): hard_errors.append("companies total != raw count")
+          if companies_total_after != companies_total: hard_errors.append("companies total changed after crawl")
+          if len(company_by_key) != len(companies): hard_errors.append("duplicate company ids")
+          if job_org_unusable: hard_errors.append("jobs without usable organization identity")
+          if unresolved: hard_errors.append("unresolved hiring organizations")
+          if missing_websites: hard_errors.append("missing company websites")
+          if len(lines) != len(resolved): hard_errors.append("output line count mismatch")
+          if not all(independent_audit.values()): hard_errors.append("independent audit failed")
+          validation["hard_errors"] = hard_errors
+          validation["status"] = "PASS" if not hard_errors else "NEEDS_REVIEW"
+          validation_bytes = json.dumps(validation, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8")
+          (OUT / "validation.json").write_bytes(validation_bytes)
+
+          manifest = {
+              "status": validation["status"],
+              "generated_at_epoch": time.time(),
+              "artifacts": {},
+          }
+          for path in sorted(OUT.rglob("*")):
+              if path.is_file() and path.name != "manifest.json":
+                  manifest["artifacts"][str(path.relative_to(OUT))] = {
+                      "bytes": path.stat().st_size,
+                      "sha256": sha256(path.read_bytes()),
+                  }
+          (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+          print("VALIDATION_SUMMARY_START")
+          print(json.dumps({
+              "status": validation["status"],
+              "jobs_reported_total": jobs_total,
+              "jobs_raw_count": len(jobs),
+              "jobs_unique_id_count": len(set(job_ids)),
+              "companies_reported_total": companies_total,
+              "companies_raw_count": len(companies),
+              "unique_hiring_organizations_from_jobs": len(hiring_orgs),
+              "resolved_hiring_companies": len(resolved),
+              "output_lines": len(lines),
+              "missing_websites": len(missing_websites),
+              "unresolved_organizations": len(unresolved),
+              "duplicate_names": len(duplicate_names),
+              "duplicate_website_hosts": len(duplicate_websites),
+              "hard_errors": hard_errors,
+          }, ensure_ascii=False, indent=2, sort_keys=True))
+          print("VALIDATION_SUMMARY_END")
+          if hard_errors:
+              # Keep the workflow successful so the evidence artifact is always uploaded for review.
+              print("Evidence captured with review items:", hard_errors, file=sys.stderr)
+          PY
+
+      - name: Upload extraction artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 8vc-hiring-companies
+          path: artifact
+          if-no-files-found: error
+          retention-days: 30
