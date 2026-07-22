@@ -10,13 +10,13 @@ permissions:
 jobs:
   discover:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Install discovery dependencies
-        run: |
-          python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml playwright
-          python -m playwright install --with-deps chromium
+        run: python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml
+      - name: Point contract probe at the actual AJAX handler
+        run: sed -i 's#https://hashkey.capital/static/js/index.js#https://hashkey.capital/front/ajax/ajaxHandler.js#' scripts/temporary_hashkey_discovery.py
       - name: Run evidence-first discovery
         run: python scripts/temporary_hashkey_discovery.py
       - name: Upload discovery evidence
