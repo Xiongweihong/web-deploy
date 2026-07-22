@@ -13,6 +13,18 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - name: Apply Getro JSON accept-header fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/temporary_wing_extraction.py')
+          text = path.read_text()
+          text = text.replace(
+              '"content-type": "application/json",\n                "origin": ORIGIN,',
+              '"content-type": "application/json",\n                "accept": "application/json",\n                "origin": ORIGIN,',
+          )
+          path.write_text(text)
+          PY
       - name: Run evidence-first extraction
         run: python scripts/temporary_wing_extraction.py
       - name: Upload extraction evidence
