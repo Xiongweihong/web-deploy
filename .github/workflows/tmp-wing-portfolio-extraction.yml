@@ -1,0 +1,25 @@
+name: Temporary Wing portfolio extraction
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run evidence-first extraction
+        run: python scripts/temporary_wing_extraction.py
+      - name: Upload extraction evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wing-portfolio-companies-evidence
+          path: artifact
+          if-no-files-found: warn
+          retention-days: 30
