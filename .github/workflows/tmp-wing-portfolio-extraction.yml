@@ -13,7 +13,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Apply Getro JSON accept-header fix
+      - name: Apply temporary Getro extraction fixes
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -22,6 +22,10 @@ jobs:
           text = text.replace(
               '"content-type": "application/json",\n                "origin": ORIGIN,',
               '"content-type": "application/json",\n                "accept": "application/json",\n                "origin": ORIGIN,',
+          )
+          text = text.replace(
+              'for path in sorted(raw_dir.glob("page-*.json")):',
+              'for path in sorted(p for p in raw_dir.glob("page-*.json") if ".meta." not in p.name):',
           )
           path.write_text(text)
           PY
