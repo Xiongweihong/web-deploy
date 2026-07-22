@@ -15,6 +15,18 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install extraction dependencies
         run: python -m pip install --disable-pip-version-check requests
+      - name: Apply temporary audit fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/temporary_variant_extraction.py')
+          text = path.read_text()
+          text = text.replace(
+              'for raw_path in sorted(raw_dir.glob("page-*.json")):',
+              'for raw_path in sorted(p for p in raw_dir.glob("page-*.json") if ".meta." not in p.name):',
+          )
+          path.write_text(text)
+          PY
       - name: Run evidence-first extraction
         run: python scripts/temporary_variant_extraction.py
       - name: Upload extraction evidence
