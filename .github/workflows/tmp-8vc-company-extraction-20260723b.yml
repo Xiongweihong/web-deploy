@@ -1,9 +1,8 @@
 name: Temporary 8VC company extraction 2026-07-23b
 
 on:
-  push:
-    branches:
-      - tmp-8vc-company-extraction-20260723b
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
