@@ -1,0 +1,26 @@
+name: Temporary FirstMark company extraction 2026-07-23
+
+on:
+  push:
+    branches:
+      - tmp-firstmark-company-extraction-20260723
+
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run evidence-first extraction
+        run: python scripts/tmp_firstmark_extract.py
+      - name: Upload extraction evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firstmark-company-extraction-20260723
+          path: artifact
+          if-no-files-found: warn
+          retention-days: 30
