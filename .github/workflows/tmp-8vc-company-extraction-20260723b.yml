@@ -1,0 +1,26 @@
+name: Temporary 8VC company extraction 2026-07-23b
+
+on:
+  push:
+    branches:
+      - tmp-8vc-company-extraction-20260723b
+
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run evidence-first extraction
+        run: python scripts/tmp_8vc_extract_20260723b.py
+      - name: Upload extraction evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 8vc-company-extraction-20260723b
+          path: artifact
+          if-no-files-found: warn
+          retention-days: 30
