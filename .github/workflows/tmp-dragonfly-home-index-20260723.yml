@@ -1,4 +1,4 @@
-name: Temporary Dragonfly homepage index discovery 2026-07-23
+name: Temporary Dragonfly homepage website checks 2026-07-23
 
 on:
   pull_request:
@@ -8,34 +8,20 @@ permissions:
   contents: read
 
 jobs:
-  discover:
+  check:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Install discovery dependencies
-        run: |
-          python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml playwright
-          python -m playwright install --with-deps chromium
-      - name: Apply temporary query fix
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('scripts/tmp_dragonfly_home_discovery_20260723.py')
-          text = path.read_text()
-          text = text.replace(
-              '    sanity_query("all-docs-projection", projection)\n',
-              '    # Broad projection skipped; query each relevant type directly.\n',
-          )
-          path.write_text(text)
-          PY
-      - name: Run evidence-first discovery
-        run: python scripts/tmp_dragonfly_home_discovery_20260723.py
-      - name: Upload discovery evidence
+      - name: Install check dependencies
+        run: python -m pip install --disable-pip-version-check requests
+      - name: Check portfolio website redirects
+        run: python scripts/tmp_dragonfly_home_http_checks_20260723.py
+      - name: Upload website-check evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dragonfly-home-index-discovery-20260723
-          path: artifact
+          name: dragonfly-home-http-checks-20260723
+          path: artifact-http
           if-no-files-found: warn
           retention-days: 30
