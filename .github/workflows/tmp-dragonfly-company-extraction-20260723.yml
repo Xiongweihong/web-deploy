@@ -1,0 +1,25 @@
+name: Temporary Dragonfly company extraction 2026-07-23
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run evidence-first extraction
+        run: python scripts/tmp_dragonfly_extract_20260723.py
+      - name: Upload extraction evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dragonfly-company-extraction-20260723
+          path: artifact
+          if-no-files-found: warn
+          retention-days: 30
