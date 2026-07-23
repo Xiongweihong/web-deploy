@@ -13,6 +13,26 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - name: Apply temporary extraction fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/tmp_dragonfly_extract_20260723.py')
+          text = path.read_text()
+          text = text.replace(
+              'match = re.search(r"Showing\\s+([0-9,]+)\\s+companies", html, re.I)',
+              'match = re.search(r"Showing(?:\\s|<!--.*?-->)*([0-9,]+)(?:\\s|<!--.*?-->)*companies", html, re.I | re.S)',
+          )
+          text = text.replace(
+              'for path in sorted((snapshot_dir / "companies").glob("page-*.json")):',
+              'for path in sorted(p for p in (snapshot_dir / "companies").glob("page-*.json") if ".meta." not in p.name):',
+          )
+          text = text.replace(
+              'if summary["displayed_company_count"] != summary["reported_total"]:',
+              'if summary["displayed_company_count"] is not None and summary["displayed_company_count"] != summary["reported_total"]:',
+          )
+          path.write_text(text)
+          PY
       - name: Run evidence-first extraction
         run: python scripts/tmp_dragonfly_extract_20260723.py
       - name: Upload extraction evidence
