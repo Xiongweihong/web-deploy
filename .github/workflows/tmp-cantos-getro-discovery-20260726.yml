@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - tmp-cantos-jobs-extraction-20260726
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
