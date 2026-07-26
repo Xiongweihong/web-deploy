@@ -19,12 +19,16 @@ jobs:
           python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml playwright
           python -m playwright install --with-deps chromium
       - name: Run evidence-first discovery
-        run: python scripts/tmp_trueventures_portfolio_discovery_20260726.py
+        run: |
+          python scripts/tmp_trueventures_portfolio_discovery_20260726.py
+          python scripts/tmp_trueventures_exits_capture_20260726.py
       - name: Upload discovery evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: trueventures-portfolio-discovery-20260726
-          path: artifact
+          path: |
+            artifact
+            artifact-exits
           if-no-files-found: warn
           retention-days: 30
