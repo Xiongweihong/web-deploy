@@ -11,7 +11,7 @@ permissions:
 jobs:
   discover:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - name: Install discovery dependencies
@@ -20,6 +20,8 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: Run evidence-first discovery
         run: python scripts/tmp_greylock_portfolio_discovery_20260726.py
+      - name: Run company website checks
+        run: python scripts/tmp_greylock_website_checks_20260726.py
       - name: Upload discovery evidence
         if: always()
         uses: actions/upload-artifact@v4
