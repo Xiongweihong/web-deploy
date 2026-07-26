@@ -23,11 +23,12 @@ jobs:
       - name: Run evidence-first full extraction
         shell: bash
         run: |
-          mkdir -p artifact-full
           set +e
           set -o pipefail
-          python scripts/tmp_cantos_full_extract_20260726.py 2>&1 | tee artifact-full/execution.log
+          python scripts/tmp_cantos_full_extract_20260726.py 2>&1 | tee /tmp/cantos-execution.log
           code=${PIPESTATUS[0]}
+          mkdir -p artifact-full
+          cp /tmp/cantos-execution.log artifact-full/execution.log
           exit ${code}
       - name: Upload extraction evidence
         if: always()
