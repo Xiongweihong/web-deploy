@@ -20,6 +20,44 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install extraction dependencies
         run: python -m pip install --disable-pip-version-check requests
+      - name: Patch optional network counts
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/tmp_cantos_full_extract_20260726.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''    counts_response = get_json(session, COUNTS_ENDPOINT)
+              counts_raw = counts_response.content
+              save_bytes(RAW / f"snapshot-{snapshot:02d}" / "network-counts.json", counts_raw, {
+                  "endpoint": COUNTS_ENDPOINT,
+                  "method": "GET",
+                  "status": counts_response.status_code,
+                  "content_type": counts_response.headers.get("content-type"),
+                  "date": counts_response.headers.get("date"),
+                  "etag": counts_response.headers.get("etag"),
+                  "fetched_at_epoch": time.time(),
+              })
+              network_counts = (counts_response.json().get("results") or {})'''.replace('          ', '')
+          new = '''    network_counts = {}
+              try:
+                  counts_response = get_json(session, COUNTS_ENDPOINT, attempts=1)
+                  counts_raw = counts_response.content
+                  save_bytes(RAW / f"snapshot-{snapshot:02d}" / "network-counts.json", counts_raw, {
+                      "endpoint": COUNTS_ENDPOINT,
+                      "method": "GET",
+                      "status": counts_response.status_code,
+                      "content_type": counts_response.headers.get("content-type"),
+                      "date": counts_response.headers.get("date"),
+                      "etag": counts_response.headers.get("etag"),
+                      "fetched_at_epoch": time.time(),
+                  })
+                  network_counts = (counts_response.json().get("results") or {})
+              except Exception as exc:
+                  write_json(RAW / f"snapshot-{snapshot:02d}" / "network-counts-error.json", {"error": repr(exc)})'''.replace('          ', '')
+          if old not in text:
+              raise SystemExit('Expected network-count block was not found')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          PY
       - name: Run evidence-first full extraction
         shell: bash
         run: |
