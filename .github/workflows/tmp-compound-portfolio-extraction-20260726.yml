@@ -11,7 +11,7 @@ permissions:
 jobs:
   discover:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - name: Install discovery dependencies
@@ -20,11 +20,21 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: Run evidence-first discovery
         run: python scripts/tmp_compound_portfolio_discovery_20260726.py
+      - name: Run portfolio website checks
+        run: python scripts/tmp_compound_portfolio_http_checks_20260726.py
       - name: Upload discovery evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: compound-portfolio-discovery-20260726
           path: artifact
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload website-check evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compound-portfolio-http-checks-20260726
+          path: artifact-http
           if-no-files-found: warn
           retention-days: 30
