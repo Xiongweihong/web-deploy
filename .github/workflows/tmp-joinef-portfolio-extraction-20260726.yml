@@ -12,20 +12,20 @@ permissions:
   contents: read
 
 jobs:
-  extract:
+  crosscheck:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Install extraction dependencies
-        run: python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml
-      - name: Run evidence-first full extraction
-        run: python scripts/tmp_joinef_full_extract_20260726.py
-      - name: Upload extraction evidence
+      - name: Install cross-check dependencies
+        run: python -m pip install --disable-pip-version-check requests
+      - name: Run EF Getro cross-check
+        run: python scripts/tmp_joinef_getro_crosscheck_20260726.py
+      - name: Upload cross-check evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: joinef-portfolio-full-extraction-20260726
+          name: joinef-getro-crosscheck-20260726
           path: artifact
           if-no-files-found: warn
           retention-days: 30
