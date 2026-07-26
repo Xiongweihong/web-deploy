@@ -1,0 +1,34 @@
+name: Temporary South Park Commons companies discovery 2026-07-26
+
+on:
+  push:
+    branches:
+      - tmp-spc-companies-discovery-20260726
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install discovery dependencies
+        run: |
+          python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml playwright
+          python -m playwright install --with-deps chromium
+      - name: Run evidence-first discovery
+        run: python scripts/tmp_spc_companies_discovery_20260726.py
+      - name: Upload discovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spc-companies-discovery-20260726
+          path: artifact
+          if-no-files-found: warn
+          retention-days: 30
