@@ -9,22 +9,22 @@ permissions:
   contents: read
 
 jobs:
-  discover:
+  extract:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - name: Install discovery dependencies
+      - name: Install extraction dependencies
         run: |
-          python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml playwright
+          python -m pip install --disable-pip-version-check requests playwright
           python -m playwright install --with-deps chromium
-      - name: Run evidence-first discovery
-        run: python scripts/tmp_nventures_portfolio_discovery_20260726.py
-      - name: Upload discovery evidence
+      - name: Run evidence-first extraction
+        run: python scripts/tmp_nventures_portfolio_full_extract_20260726.py
+      - name: Upload extraction evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nventures-portfolio-discovery-20260726
+          name: nventures-portfolio-full-extraction-20260726
           path: artifact
           if-no-files-found: warn
           retention-days: 30
