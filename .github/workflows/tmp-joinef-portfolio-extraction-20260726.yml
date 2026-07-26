@@ -19,13 +19,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install extraction dependencies
         run: python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml
-      - name: Run JavaScript probe
-        run: python scripts/tmp_joinef_js_probe_20260726.py
+      - name: Run AJAX contract probe
+        run: python scripts/tmp_joinef_ajax_probe_20260726.py
       - name: Upload extraction evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: joinef-portfolio-js-probe-20260726
+          name: joinef-portfolio-ajax-probe-20260726
           path: artifact
           if-no-files-found: warn
           retention-days: 30
