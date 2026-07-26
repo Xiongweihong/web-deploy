@@ -13,22 +13,22 @@ permissions:
   contents: read
 
 jobs:
-  discover:
+  extract:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - name: Install discovery dependencies
+      - name: Install extraction dependencies
         run: |
           python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml playwright
           python -m playwright install --with-deps chromium
-      - name: Run evidence-first discovery
-        run: python scripts/tmp_spc_companies_discovery_20260726.py
-      - name: Upload discovery evidence
+      - name: Run evidence-first full extraction
+        run: python scripts/tmp_spc_companies_full_extract_20260726.py
+      - name: Upload extraction evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: spc-companies-discovery-20260726
-          path: artifact
+          name: spc-companies-full-extraction-20260726
+          path: artifact-full
           if-no-files-found: warn
           retention-days: 30
