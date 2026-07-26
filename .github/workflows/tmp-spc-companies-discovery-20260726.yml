@@ -37,6 +37,7 @@ jobs:
       - name: Run evidence-first full extraction
         shell: bash
         run: |
+          set +e
           set -o pipefail
           python scripts/tmp_spc_companies_full_extract_20260726.py 2>&1 | tee /tmp/spc-execution.log
           code=${PIPESTATUS[0]}
