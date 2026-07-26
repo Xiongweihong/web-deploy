@@ -1,0 +1,28 @@
+name: Temporary Kleiner Perkins partnerships discovery 2026-07-26
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install discovery dependencies
+        run: python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml
+      - name: Run evidence-first discovery
+        run: python scripts/tmp_kp_partnerships_discovery_20260726.py
+      - name: Upload discovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kp-partnerships-discovery-20260726
+          path: artifact
+          if-no-files-found: warn
+          retention-days: 30
