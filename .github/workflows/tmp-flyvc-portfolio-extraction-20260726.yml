@@ -19,6 +19,7 @@ jobs:
         run: |
           python scripts/tmp_flyvc_probe_20260726.py
           python scripts/tmp_flyvc_sitejs_probe_20260726.py
+          python scripts/tmp_flyvc_json_capture_20260726.py
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
