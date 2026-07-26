@@ -1,9 +1,6 @@
-name: Temporary Entrepreneurs First portfolio extraction 2026-07-26
+name: Temporary Entrepreneurs First portfolio full extraction rerun2 2026-07-26
 
 on:
-  push:
-    branches:
-      - tmp-joinef-portfolio-extraction-20260726
   pull_request:
     branches:
       - main
@@ -12,20 +9,20 @@ permissions:
   contents: read
 
 jobs:
-  crosscheck:
+  extract:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - name: Install cross-check dependencies
-        run: python -m pip install --disable-pip-version-check requests
-      - name: Run EF Getro cross-check
-        run: python scripts/tmp_joinef_getro_crosscheck_20260726.py
-      - name: Upload cross-check evidence
+      - name: Install extraction dependencies
+        run: python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml
+      - name: Run evidence-first full extraction
+        run: python scripts/tmp_joinef_full_extract_20260726.py
+      - name: Upload extraction evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: joinef-getro-crosscheck-20260726
+          name: joinef-portfolio-full-extraction-rerun2-20260726
           path: artifact
           if-no-files-found: warn
           retention-days: 30
