@@ -11,7 +11,7 @@ permissions:
 jobs:
   discover:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Install discovery dependencies
@@ -20,6 +20,7 @@ jobs:
         run: |
           python scripts/tmp_kp_partnerships_discovery_20260726.py
           python scripts/tmp_kp_wpapi_probe_20260726.py
+          python scripts/tmp_kp_full_api_capture_20260726.py
       - name: Upload discovery evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -28,5 +29,6 @@ jobs:
           path: |
             artifact
             artifact-api
+            artifact-full-api
           if-no-files-found: warn
           retention-days: 30
