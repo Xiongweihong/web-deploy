@@ -10,16 +10,20 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
-        run: python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml
+        run: |
+          python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml playwright
+          python -m playwright install --with-deps chromium
       - name: Probe Fly Ventures portfolio
         run: |
           python scripts/tmp_flyvc_probe_20260726.py
           python scripts/tmp_flyvc_sitejs_probe_20260726.py
           python scripts/tmp_flyvc_json_capture_20260726.py
+          python scripts/tmp_flyvc_browser_check_20260726.py
+          python scripts/tmp_flyvc_website_checks_20260726.py
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
