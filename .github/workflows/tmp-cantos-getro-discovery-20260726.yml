@@ -29,8 +29,12 @@ jobs:
 
           text = text.replace('"Accept": "application/json, text/plain, */*",', '"Accept": "application/json",')
           text = text.replace('    "Origin": "https://jobs.cantos.vc",\n', '')
+          text = text.replace('    page = 1\n', '    page = 0\n', 1)
           text = text.replace('jobs = fetch_collection(session, snapshot, "jobs", page_size=100)', 'jobs = fetch_collection(session, snapshot, "jobs", page_size=20)')
           text = text.replace('companies = fetch_collection(session, snapshot, "companies", page_size=100)', 'companies = fetch_collection(session, snapshot, "companies", page_size=12)')
+          text = text.replace('first_payload = {"hitsPerPage": page_size, "page": 1, "filters": {"page": 1}, "query": ""}', 'first_payload = {"hitsPerPage": page_size, "page": 0, "filters": {"page": 0}, "query": ""}')
+          text = text.replace('"page-0001-recheck.json"', '"page-0000-recheck.json"')
+          text = text.replace('        "page": 1,\n        "recheck": True,', '        "page": 0,\n        "recheck": True,')
 
           old = '''    counts_response = get_json(session, COUNTS_ENDPOINT)
               counts_raw = counts_response.content
