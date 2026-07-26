@@ -21,7 +21,14 @@ jobs:
       - name: Install extraction dependencies
         run: python -m pip install --disable-pip-version-check requests
       - name: Run evidence-first full extraction
-        run: python scripts/tmp_cantos_full_extract_20260726.py
+        shell: bash
+        run: |
+          mkdir -p artifact-full
+          set +e
+          set -o pipefail
+          python scripts/tmp_cantos_full_extract_20260726.py 2>&1 | tee artifact-full/execution.log
+          code=${PIPESTATUS[0]}
+          exit ${code}
       - name: Upload extraction evidence
         if: always()
         uses: actions/upload-artifact@v4
