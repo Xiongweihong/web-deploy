@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - tmp-yc-companies-6107-20260731
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
