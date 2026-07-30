@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
-          python -m pip install --disable-pip-version-check requests playwright
+          python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml playwright
           python -m playwright install --with-deps chromium
       - name: Run discovery
         shell: bash
