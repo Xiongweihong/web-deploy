@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+# Temporary public-source discovery script for the Sequoia company directory.
 import collections
 import hashlib
 import json
@@ -77,7 +78,6 @@ def main() -> None:
         for cls in el.get("class", []):
             class_counts[cls] += 1
 
-    # Find likely row containers around recognizable first companies.
     anchors = []
     for needle in ["[24]7.ai", "100 Thieves", "Abby Care", "AdMob", "Agency", "Catch", "Zoom", "Zum"]:
         found = soup.find(string=lambda s: isinstance(s, str) and needle in s)
@@ -98,7 +98,6 @@ def main() -> None:
         if any(k in text.lower() for k in ["facetwp", "company", "wp-json", "ajax", "rest_url", "our-companies"]):
             scripts.append({"index": idx, "attrs": attrs, "text": text[:20000]})
 
-    # Probe WordPress REST discovery endpoints conservatively.
     probes = {}
     probe_urls = [
         "https://sequoiacap.com/wp-json/",
