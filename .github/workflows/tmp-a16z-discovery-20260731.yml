@@ -20,21 +20,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml
-      - name: Run source discovery
-        shell: bash
-        run: |
-          set +e
-          set -o pipefail
-          python scripts/tmp_a16z_discovery_20260731.py 2>&1 | tee /tmp/a16z-discovery.log
-          code=${PIPESTATUS[0]}
-          mkdir -p artifact
-          cp /tmp/a16z-discovery.log artifact/execution.log
-          exit ${code}
       - name: Probe jobs company API
         shell: bash
         run: |
           set +e
           set -o pipefail
+          mkdir -p artifact
           python scripts/tmp_a16z_jobs_probe_20260731.py 2>&1 | tee /tmp/a16z-jobs-probe.log
           code=${PIPESTATUS[0]}
           cp /tmp/a16z-jobs-probe.log artifact/jobs-probe-execution.log
