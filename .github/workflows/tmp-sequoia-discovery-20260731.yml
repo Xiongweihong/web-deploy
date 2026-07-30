@@ -1,6 +1,9 @@
 name: Temporary Sequoia portfolio discovery 2026-07-31
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - tmp-sequoia-companies-20260731
