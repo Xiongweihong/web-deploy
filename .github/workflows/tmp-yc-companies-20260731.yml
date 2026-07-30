@@ -1,0 +1,37 @@
+name: Temporary YC companies extraction 2026-07-31
+
+on:
+  push:
+    branches:
+      - tmp-yc-companies-6107-20260731
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install extraction dependencies
+        run: python -m pip install --disable-pip-version-check requests
+      - name: Run evidence-first YC extraction
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          python scripts/tmp_yc_companies_extract_20260731.py 2>&1 | tee /tmp/yc-execution.log
+          code=${PIPESTATUS[0]}
+          mkdir -p artifact
+          cp /tmp/yc-execution.log artifact/execution.log
+          exit ${code}
+      - name: Upload YC extraction evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: yc-companies-extraction-20260731
+          path: artifact
+          if-no-files-found: warn
+          retention-days: 30
