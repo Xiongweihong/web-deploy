@@ -28,7 +28,7 @@ jobs:
           set +e
           set -o pipefail
           mkdir -p artifact
-          python scripts/tmp_multi_vc_final_runner_20260731.py 2>&1 | tee /tmp/multi-vc-final.log
+          python scripts/tmp_multi_vc_final_runner_v3_20260731.py 2>&1 | tee /tmp/multi-vc-final.log
           code=${PIPESTATUS[0]}
           cp /tmp/multi-vc-final.log artifact/execution.log
           exit ${code}
