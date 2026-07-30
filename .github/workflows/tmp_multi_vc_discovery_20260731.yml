@@ -1,4 +1,4 @@
-name: Temporary multi-VC extraction 2026-07-31
+name: Temporary Index transport test 2026-07-31
 
 on:
   push:
@@ -13,97 +13,12 @@ permissions:
   contents: read
 
 jobs:
-  index-shard:
+  test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
-    env:
-      SHARD: ${{ matrix.shard }}
-      TOTAL_SHARDS: 8
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Install Index extraction dependencies
-        run: |
-          python -m pip install --disable-pip-version-check requests playwright beautifulsoup4 lxml
-          python -m playwright install --with-deps chromium
-      - name: Extract Index detail shard twice
-        shell: bash
-        run: |
-          set +e
-          set -o pipefail
-          mkdir -p artifact
-          python scripts/tmp_index_ventures_shard_20260731.py 2>&1 | tee /tmp/index-shard.log
-          code=${PIPESTATUS[0]}
-          exit ${code}
-      - name: Upload validated Index shard
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: index-shard-${{ matrix.shard }}
-          path: artifact/index-shard-${{ matrix.shard }}.json
-          if-no-files-found: error
-          retention-days: 30
-
-  aggregate-index:
-    needs: index-shard
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: index-shard-*
-          path: index-shards
-          merge-multiple: true
-      - name: Aggregate and validate 321 Index companies
-        env:
-          INDEX_SHARD_DIR: index-shards
-          INDEX_AGGREGATE_DIR: artifact
-        run: |
-          mkdir -p artifact
-          python scripts/tmp_index_ventures_aggregate_20260731.py
-      - name: Upload complete Index detail set
-        uses: actions/upload-artifact@v4
-        with:
-          name: index-complete
-          path: artifact
-          if-no-files-found: error
-          retention-days: 30
-
-  extract:
-    needs: aggregate-index
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: index-complete
-          path: index-complete
-      - name: Install final extraction dependencies
-        run: |
-          python -m pip install --disable-pip-version-check requests playwright beautifulsoup4 lxml tldextract
-          python -m playwright install --with-deps chromium
-      - name: Run audited extraction with validated Index data
-        env:
-          INDEX_COMPLETE_DIR: index-complete
-        shell: bash
-        run: |
-          set +e
-          set -o pipefail
-          mkdir -p artifact
-          python scripts/tmp_multi_vc_final_runner_v5_20260731.py 2>&1 | tee /tmp/multi-vc-final.log
-          code=${PIPESTATUS[0]}
-          cp /tmp/multi-vc-final.log artifact/execution.log
-          exit ${code}
-      - name: Upload extraction evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: multi-vc-final-extraction-20260731
-          path: artifact
-          if-no-files-found: warn
-          retention-days: 30
+      - name: Install dependency
+        run: python -m pip install --disable-pip-version-check requests
+      - name: Test reader transport against two official Index pages
+        run: python scripts/tmp_jina_index_test_20260731.py
