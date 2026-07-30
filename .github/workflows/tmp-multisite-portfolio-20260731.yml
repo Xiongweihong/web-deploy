@@ -1,0 +1,42 @@
+name: Temporary multisite portfolio extraction 2026-07-31
+
+on:
+  push:
+    branches:
+      - tmp-multisite-portfolio-20260731
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml playwright
+          python -m playwright install --with-deps chromium
+      - name: Run multisite discovery
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          mkdir -p artifact
+          python scripts/tmp_multisite_portfolio_discovery_20260731.py 2>&1 | tee /tmp/multisite-discovery.log
+          code=${PIPESTATUS[0]}
+          cp /tmp/multisite-discovery.log artifact/execution.log
+          exit ${code}
+      - name: Upload discovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: multisite-portfolio-discovery-20260731
+          path: artifact
+          if-no-files-found: warn
+          retention-days: 30
