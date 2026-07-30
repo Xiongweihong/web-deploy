@@ -1,0 +1,42 @@
+name: Temporary multi-VC discovery 2026-07-31
+
+on:
+  push:
+    branches:
+      - tmp-multi-vc-extraction-20260731
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          python -m pip install --disable-pip-version-check requests playwright
+          python -m playwright install --with-deps chromium
+      - name: Run discovery
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          mkdir -p artifact
+          python scripts/tmp_multi_vc_discovery_20260731.py 2>&1 | tee /tmp/multi-vc-discovery.log
+          code=${PIPESTATUS[0]}
+          cp /tmp/multi-vc-discovery.log artifact/execution.log
+          exit ${code}
+      - name: Upload discovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: multi-vc-discovery-20260731
+          path: artifact
+          if-no-files-found: warn
+          retention-days: 30
