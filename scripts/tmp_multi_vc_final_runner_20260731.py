@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
@@ -38,7 +39,129 @@ def fixed_external_candidates(soup, internal_hosts):
     return out
 
 
+def fixed_fetch_consider(session, source, board_id, host, snapshot):
+    """Fetch a complete Consider company directory with bounded cursor pagination."""
+    page_url = f"https://{host}/companies"
+    response = module.get_retry(session, page_url)
+    response.raise_for_status()
+    (module.RAW / f"{source}-page-{snapshot}.html").write_bytes(response.content)
+
+    match = re.search(r"window\.serverInitialData\s*=\s*(\{.*?\});", response.text, re.S)
+    if not match:
+        raise RuntimeError(f"serverInitialData missing for {source}")
+    initial = json.loads(match.group(1))
+    board = initial.get("board") or {"id": board_id, "isParent": True}
+    declared = None
+    try:
+        declared = int(initial["parents"]["items"][board_id]["numCompanies"])
+    except Exception:
+        pass
+
+    headers = {
+        "X-CSRF-Token": initial.get("csrfToken", ""),
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Referer": page_url,
+    }
+
+    selected_size = None
+    first_body = None
+    failures = []
+    for size in [1000, 500, 200, 100, 45]:
+        api = session.post(
+            f"https://{host}/api-boards/search-companies",
+            headers=headers,
+            json={"query": {}, "meta": {"size": size}, "board": board},
+            timeout=180,
+        )
+        if api.ok:
+            selected_size = size
+            first_body = api.json()
+            break
+        failures.append({"size": size, "status": api.status_code, "body": api.text[:1000]})
+    if selected_size is None or first_body is None:
+        raise RuntimeError(f"All Consider API page-size attempts failed for {source}: {failures}")
+
+    pages = [first_body]
+    all_companies = list(first_body.get("companies") or [])
+    total = int(first_body.get("total", -1))
+    sequence = (first_body.get("meta") or {}).get("sequence")
+
+    for page_index in range(1, 100):
+        if total >= 0 and len(all_companies) >= total:
+            break
+        if not sequence:
+            break
+        api = session.post(
+            f"https://{host}/api-boards/search-companies",
+            headers=headers,
+            json={
+                "query": {},
+                "meta": {"size": selected_size, "sequence": sequence},
+                "board": board,
+            },
+            timeout=180,
+        )
+        api.raise_for_status()
+        body = api.json()
+        pages.append(body)
+        batch = list(body.get("companies") or [])
+        if not batch:
+            break
+        all_companies.extend(batch)
+        next_sequence = (body.get("meta") or {}).get("sequence")
+        if next_sequence == sequence:
+            break
+        sequence = next_sequence
+
+    unique = {}
+    for company in all_companies:
+        key = str(company.get("slug") or company.get("id") or company.get("name") or "")
+        if key:
+            unique.setdefault(key, company)
+    companies = list(unique.values())
+
+    module.dump(
+        module.RAW / f"{source}-api-{snapshot}.json",
+        {
+            "selected_page_size": selected_size,
+            "failed_page_sizes": failures,
+            "total": total,
+            "pages": pages,
+            "companies": companies,
+        },
+    )
+
+    rows = []
+    for company in companies:
+        website_field = company.get("website") or {}
+        website = website_field.get("url") if isinstance(website_field, dict) else website_field
+        if not website and company.get("domain"):
+            website = str(company["domain"])
+        slug = str(company.get("slug") or company.get("id") or company.get("name") or "")
+        rows.append(
+            module.record(
+                source,
+                slug,
+                str(company.get("name") or company.get("id") or "").strip(),
+                website,
+                detail_url=f"https://{host}/companies/{slug}",
+                raw=company,
+            )
+        )
+
+    return rows, {
+        "declared": declared,
+        "api_total": total,
+        "returned": len(rows),
+        "selected_page_size": selected_size,
+        "api_page_count": len(pages),
+        "failed_page_sizes": failures,
+    }
+
+
 module.external_candidates = fixed_external_candidates
+module.fetch_consider = fixed_fetch_consider
 module.main()
 
 validation_path = Path("artifact/validation.json")
@@ -79,6 +202,8 @@ for key in ["capitalg_jobs_meta", "bcv_jobs_meta"]:
                 "declared": declared,
                 "api_total": api_total,
                 "returned": returned,
+                "selected_page_size": item.get("selected_page_size"),
+                "api_page_count": item.get("api_page_count"),
                 "closed": (
                     api_total == returned
                     and (declared is None or declared == api_total)
